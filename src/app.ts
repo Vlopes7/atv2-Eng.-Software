@@ -1,6 +1,6 @@
 import express, { Request, Response } from "express";
 import path from "path";
-import fs from "fs";
+import sqlite3 from "sqlite3";
 
 const app = express();
 
@@ -9,16 +9,185 @@ app.set("views", path.join(__dirname, "../views"));
 app.use(express.static(path.join(__dirname, "../public")));
 app.use(express.json());
 
+const db = new (sqlite3.verbose().Database)(
+  "./test.db",
+  sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE,
+  (err: Error | null) => {
+    if (err) {
+      console.error(err.message);
+    } else {
+      console.log("Conectado ao banco de dados test.db");
+    }
+  }
+);
+
+function dbRun(sql: string, params: any[] = []): Promise<{ lastID: number; changes: number }> {
+  return new Promise((resolve, reject) => {
+    db.run(sql, params, function (err: Error | null) {
+      if (err) {
+        reject(err);
+      } else {
+        resolve({ lastID: this.lastID, changes: this.changes });
+      }
+    });
+  });
+}
+
+function dbGet<T>(sql: string, params: any[] = []): Promise<T | undefined> {
+  return new Promise((resolve, reject) => {
+    db.get(sql, params, (err: Error | null, row: T) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(row);
+      }
+    });
+  });
+}
+
+function dbAll<T>(sql: string, params: any[] = []): Promise<T[]> {
+  return new Promise((resolve, reject) => {
+    db.all(sql, params, (err: Error | null, rows: T[]) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(rows);
+      }
+    });
+  });
+}
+
+async function seedDatabase() {
+  try {
+    const dadosCount = await dbGet<{ count: number }>("SELECT COUNT(*) as count FROM dados_pessoais");
+    if (dadosCount && dadosCount.count === 0) {
+      await dbRun("INSERT INTO dados_pessoais (nome, descricao) VALUES (?, ?)", [
+        "Vinicius Lopes Machado",
+        "Desenvolvedor Backend Java, Node.js e Python."
+      ]);
+    }
+
+    const sobreCount = await dbGet<{ count: number }>("SELECT COUNT(*) as count FROM sobre");
+    if (sobreCount && sobreCount.count === 0) {
+      await dbRun("INSERT INTO sobre (apresentacao) VALUES (?)", [
+        "Desenvolvedor Backend com foco na construção de APIs e microsserviços robustos, escaláveis e eficientes. Tenho experiência com Java (Spring Boot), Node.js (Express, TypeScript) e Python (Django). Meu trabalho é centrado na escrita de código limpo e testável para resolver problemas complexos de maneira lógica e com bom desempenho."
+      ]);
+    }
+
+    const contatoCount = await dbGet<{ count: number }>("SELECT COUNT(*) as count FROM contato");
+    if (contatoCount && contatoCount.count === 0) {
+      await dbRun("INSERT INTO contato (email, github, linkedin) VALUES (?, ?, ?)", [
+        "seu.email@gmail.com",
+        "https://github.com/seu-usuario",
+        "https://linkedin.com/in/seu-usuario"
+      ]);
+    }
+
+    const formacoesCount = await dbGet<{ count: number }>("SELECT COUNT(*) as count FROM formacoes");
+    if (formacoesCount && formacoesCount.count === 0) {
+      const formacoes = [
+        { "curso": "Análise e Desenvolvimento de Sistemas", "instituicao": "FATEC", "ano": "2024-2027" }
+      ];
+      for (const f of formacoes) {
+        await dbRun("INSERT INTO formacoes (curso, instituicao, ano) VALUES (?, ?, ?)", [f.curso, f.instituicao, f.ano]);
+      }
+    }
+
+    const hardskillsCount = await dbGet<{ count: number }>("SELECT COUNT(*) as count FROM hard_skills");
+    if (hardskillsCount && hardskillsCount.count === 0) {
+      const hardskills = [
+        { "nomeHabilidade": "Linguagens", "habilidade": "Java, Python, JavaScript, TypeScript" },
+        { "nomeHabilidade": "Frameworks Backend", "habilidade": "Spring Boot, Node.js, Express, Django" },
+        { "nomeHabilidade": "Banco de Dados", "habilidade": "PostgreSQL, MySQL, MongoDB, Redis" }
+      ];
+      for (const h of hardskills) {
+        await dbRun("INSERT INTO hard_skills (nomeHabilidade, habilidade) VALUES (?, ?)", [h.nomeHabilidade, h.habilidade]);
+      }
+    }
+
+    const softskillsCount = await dbGet<{ count: number }>("SELECT COUNT(*) as count FROM soft_skills");
+    if (softskillsCount && softskillsCount.count === 0) {
+      const softskills = [
+        { "habilidade": "Comunicação Efetiva" },
+        { "habilidade": "Resolução de Problemas" },
+        { "habilidade": "Trabalho em Equipe" }
+      ];
+      for (const s of softskills) {
+        await dbRun("INSERT INTO soft_skills (habilidade) VALUES (?)", [s.habilidade]);
+      }
+    }
+
+    const projetosCount = await dbGet<{ count: number }>("SELECT COUNT(*) as count FROM projetos");
+    if (projetosCount && projetosCount.count === 0) {
+      const projetos = [
+        { "titulo": "Projeto Entrenova", "descricao": "Uma plataforma web completa com frontend e backend. (Adicione aqui mais detalhes sobre o projeto).", "tecnologias": "Node.js, React, Django, Supabase" },
+        { "titulo": "Aplicação CRUD em Java", "descricao": "Sistema de gerenciamento de desktop focado nas operações de Criar, Ler, Atualizar e Deletar dados.", "tecnologias": "Java, JavaFX, MySQL" },
+        { "titulo": "Site sobre Metodologia Ágil", "descricao": "Projeto em grupo para criar um site educacional com o objetivo de explicar os conceitos e a aplicação de metodologias ágeis.", "tecnologias": "HTML, CSS, JavaScript" },
+        { "titulo": "IDE (Integrated Development Environment)", "descricao": "Ferramenta de desenvolvimento (IDE) customizada, criada em equipe como projeto acadêmico.", "tecnologias": "Java, (Outras bibliotecas)" }
+      ];
+      for (const p of projetos) {
+        await dbRun("INSERT INTO projetos (titulo, descricao, tecnologias) VALUES (?, ?, ?)", [p.titulo, p.descricao, p.tecnologias]);
+      }
+    }
+
+  } catch (err: any) {
+    console.error("Erro ao popular o banco de dados:", err.message);
+  }
+}
+
+(async () => {
+  try {
+    await dbRun(`CREATE TABLE IF NOT EXISTS dados_pessoais (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      nome TEXT,
+      descricao TEXT
+    )`);
+    await dbRun(`CREATE TABLE IF NOT EXISTS sobre (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      apresentacao TEXT
+    )`);
+    await dbRun(`CREATE TABLE IF NOT EXISTS formacoes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      curso TEXT,
+      instituicao TEXT,
+      ano TEXT
+    )`);
+    await dbRun(`CREATE TABLE IF NOT EXISTS soft_skills (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      habilidade TEXT
+    )`);
+    await dbRun(`CREATE TABLE IF NOT EXISTS hard_skills (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      nomeHabilidade TEXT,
+      habilidade TEXT
+    )`);
+    await dbRun(`CREATE TABLE IF NOT EXISTS projetos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      titulo TEXT,
+      descricao TEXT,
+      tecnologias TEXT
+    )`);
+    await dbRun(`CREATE TABLE IF NOT EXISTS contato (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT,
+      github TEXT,
+      linkedin TEXT
+    )`);
+
+    await seedDatabase();
+
+  } catch (err: any) {
+    console.error("Erro ao criar tabelas:", err.message);
+  }
+})();
 
 interface DadosPessoais {
   nome: string;
   descricao: string;
 }
-
 interface Sobre {
   apresentacao: string;
 }
-
 interface Formacao {
   id: number;
   curso: string;
@@ -28,266 +197,371 @@ interface Formacao {
 interface SoftSkill {
   id: number;
   habilidade: string;
- 
 }
 interface HardSkill {
   id: number;
-  nomeHabilidade:string;
+  nomeHabilidade: string;
   habilidade: string;
- 
 }
-
 interface Projeto {
   id: number;
   titulo: string;
   descricao: string;
-  tecnologias?: string; // Adicionado 'tecnologias' aqui
+  tecnologias?: string;
 }
-
 interface Contato {
   email: string;
   github: string;
   linkedin: string;
 }
 
-
-
-const DATA_PATH = path.join(__dirname, "../data");
-const DADOS_PATH = path.join(DATA_PATH, "dadosPessoais.json");
-const SOBRE_PATH = path.join(DATA_PATH, "sobre.json");
-const FORMACOES_PATH = path.join(DATA_PATH, "formacoes.json");
-const SOFT_PATH = path.join(DATA_PATH, "softskills.json")
-const HARD_PATH = path.join(DATA_PATH, "hardskills.json")
-const PROJETOS_PATH = path.join(DATA_PATH, "projetos.json");
-const CONTATO_PATH = path.join(DATA_PATH, "contato.json");
-
-
-
-function carregarJSON<T>(caminho: string, padrao: T): T {
+app.get("/", async (req: Request, res: Response) => {
   try {
-    if (!fs.existsSync(DATA_PATH)) fs.mkdirSync(DATA_PATH);
-    if (fs.existsSync(caminho)) {
-      return JSON.parse(fs.readFileSync(caminho, "utf8"));
-    } else {
-      fs.writeFileSync(caminho, JSON.stringify(padrao, null, 2));
-      return padrao;
-    }
-  } catch (err) {
-    console.error(`Erro ao carregar ${caminho}:`, err);
-    return padrao;
+    const [
+      dadosPessoais,
+      sobre,
+      formacoes,
+      softSkills,
+      hardSkills,
+      projetos,
+      contato,
+    ] = await Promise.all([
+      dbGet<DadosPessoais>("SELECT * FROM dados_pessoais LIMIT 1"),
+      dbGet<Sobre>("SELECT * FROM sobre LIMIT 1"),
+      dbAll<Formacao>("SELECT * FROM formacoes"),
+      dbAll<SoftSkill>("SELECT * FROM soft_skills"),
+      dbAll<HardSkill>("SELECT * FROM hard_skills"),
+      dbAll<Projeto>("SELECT * FROM projetos"),
+      dbGet<Contato>("SELECT * FROM contato LIMIT 1"),
+    ]);
+
+    res.render("index", {
+      dadosPessoais: dadosPessoais || { nome: "", descricao: "" },
+      sobre: sobre || { apresentacao: "" },
+      formacoes: formacoes || [],
+      softSkills: softSkills || [],
+      hardSkills: hardSkills || [],
+      projetos: projetos || [],
+      contato: contato || { email: "", github: "", linkedin: "" },
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
-}
-
-function salvarJSON(caminho: string, dados: any) {
-  fs.writeFileSync(caminho, JSON.stringify(dados, null, 2));
-}
-
-
-let dadosPessoais: DadosPessoais = carregarJSON(DADOS_PATH, { nome: "", descricao: "" });
-let sobre: Sobre = carregarJSON(SOBRE_PATH, { apresentacao: "" });
-let formacoes: Formacao[] = carregarJSON(FORMACOES_PATH, []);
-let softSkills: SoftSkill[] = carregarJSON(SOFT_PATH, []);
-let hardSkills: HardSkill[] = carregarJSON(HARD_PATH, []);
-let projetos: Projeto[] = carregarJSON(PROJETOS_PATH, []);
-let contato = carregarJSON(CONTATO_PATH, { email: "", github: "", linkedin: "" });
-
-
-app.get("/", (req, res) => {
-  res.render("index", { dadosPessoais, sobre, formacoes, softSkills, hardSkills, projetos, contato });
 });
 
+app.get("/api/dados", async (req: Request, res: Response) => {
+  try {
+    const row = await dbGet<DadosPessoais>("SELECT * FROM dados_pessoais LIMIT 1");
+    res.json(row || { nome: "", descricao: "" });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-app.get("/api/dados", (req, res) => res.json(dadosPessoais));
-
-app.post("/api/dados", (req, res) => {
+app.post("/api/dados", async (req: Request, res: Response) => {
   const { nome, descricao } = req.body;
-  if (nome) dadosPessoais.nome = nome;
-  if (descricao) dadosPessoais.descricao = descricao;
-  salvarJSON(DADOS_PATH, dadosPessoais);
-  res.json(dadosPessoais);
+  try {
+    await dbRun("DELETE FROM dados_pessoais");
+    const { lastID } = await dbRun(
+      "INSERT INTO dados_pessoais (nome, descricao) VALUES (?, ?)",
+      [nome, descricao]
+    );
+    res.json({ id: lastID, nome, descricao });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-app.put("/api/dados", (req, res) => {
+app.put("/api/dados", async (req: Request, res: Response) => {
   const { nome, descricao } = req.body;
-  if (nome) dadosPessoais.nome = nome;
-  if (descricao) dadosPessoais.descricao = descricao;
-  salvarJSON(DADOS_PATH, dadosPessoais);
-  res.json(dadosPessoais);
+  try {
+    const { changes } = await dbRun(
+      "UPDATE dados_pessoais SET nome = ?, descricao = ? WHERE id = (SELECT id FROM dados_pessoais LIMIT 1)",
+      [nome, descricao]
+    );
+    res.json({ changes, nome, descricao });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-app.delete("/api/dados", (req, res) => {
-  dadosPessoais = { nome: "", descricao: "" };
-  salvarJSON(DADOS_PATH, dadosPessoais);
-  res.json({ message: "Dados deletados com sucesso", dados: dadosPessoais });
+app.get("/api/sobre", async (req: Request, res: Response) => {
+  try {
+    const row = await dbGet<Sobre>("SELECT * FROM sobre LIMIT 1");
+    res.json(row || { apresentacao: "" });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-
-app.get("/api/sobre", (req, res) => res.json(sobre));
-
-app.post("/api/sobre", (req, res) => {
+app.post("/api/sobre", async (req: Request, res: Response) => {
   const { apresentacao } = req.body;
-  if (apresentacao) sobre.apresentacao = apresentacao;
-  salvarJSON(SOBRE_PATH, sobre);
-  res.json(sobre);
+  try {
+    await dbRun("DELETE FROM sobre");
+    const { lastID } = await dbRun(
+      "INSERT INTO sobre (apresentacao) VALUES (?)",
+      [apresentacao]
+    );
+    res.json({ id: lastID, apresentacao });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-app.put("/api/sobre", (req, res) => {
+app.put("/api/sobre", async (req: Request, res: Response) => {
   const { apresentacao } = req.body;
-  if (apresentacao) sobre.apresentacao = apresentacao;
-  salvarJSON(SOBRE_PATH, sobre);
-  res.json(sobre);
-});
-
-app.delete("/api/sobre", (req, res) => {
-  sobre = { apresentacao: "" };
-  salvarJSON(SOBRE_PATH, sobre);
-  res.json({ message: "Dados deletados com sucesso", sobre });
-});
-
-
-app.get("/api/formacoes", (req, res) => res.json(formacoes));
-
-app.post("/api/formacoes", (req, res) => {
-  const novaFormacao: Formacao = { id: formacoes.length + 1, ...req.body };
-  formacoes.push(novaFormacao);
-  salvarJSON(FORMACOES_PATH, formacoes);
-  res.json(novaFormacao);
-});
-
-app.put("/api/formacoes/:id", (req, res) => {
-  const id = parseInt(req.params.id);
-  const index = formacoes.findIndex(f => f.id === id);
-  if (index >= 0) {
-    formacoes[index] = { id, ...req.body };
-    salvarJSON(FORMACOES_PATH, formacoes);
-    res.json(formacoes[index]);
-  } else {
-    res.status(404).json({ message: "Formação não encontrada" });
+  try {
+    const { changes } = await dbRun(
+      "UPDATE sobre SET apresentacao = ? WHERE id = (SELECT id FROM sobre LIMIT 1)",
+      [apresentacao]
+    );
+    res.json({ changes, apresentacao });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 });
 
-app.delete("/api/formacoes/:id", (req, res) => {
-  const id = parseInt(req.params.id);
-  formacoes = formacoes.filter(f => f.id !== id);
-  salvarJSON(FORMACOES_PATH, formacoes);
-  res.sendStatus(204);
-});
-
-app.get("/api/softskills", (req: Request, res: Response) => {
-  res.json(softSkills);
-});
-
-
-app.post("/api/softskills", (req: Request, res: Response) => {
-  const novaSkill: SoftSkill = { id: softSkills.length + 1, ...req.body };
-  softSkills.push(novaSkill);
-  salvarJSON(SOFT_PATH, softSkills);
-  res.json(novaSkill);
-});
-
-
-app.put("/api/softskills/:id", (req: Request, res: Response) => {
-  const id = parseInt(req.params.id);
-  const index = softSkills.findIndex(s => s.id === id);
-  if (index >= 0) {
-    softSkills[index] = { id, ...req.body };
-    salvarJSON(SOFT_PATH, softSkills);
-    res.json(softSkills[index]);
-  } else {
-    res.status(404).json({ message: "Soft skill não encontrada" });
+app.get("/api/formacoes", async (req: Request, res: Response) => {
+  try {
+    const rows = await dbAll<Formacao>("SELECT * FROM formacoes");
+    res.json(rows);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 });
 
-
-app.delete("/api/softskills/:id", (req: Request, res: Response) => {
-  const id = parseInt(req.params.id);
-  softSkills = softSkills.filter(s => s.id !== id);
-  salvarJSON(SOFT_PATH, softSkills);
-  res.sendStatus(204);
-});
-
-app.get("/api/hardskills", (req: Request, res: Response) => {
-  res.json(hardSkills);
-});
-
-app.post("/api/hardskills", (req: Request, res: Response) => {
-  const novaSkill: HardSkill = { id: hardSkills.length + 1, ...req.body };
-  hardSkills.push(novaSkill);
-  salvarJSON(HARD_PATH, hardSkills);
-  res.json(novaSkill);
-});
-
-app.put("/api/hardskills/:id", (req: Request, res: Response) => {
-  const id = parseInt(req.params.id);
-  const index = hardSkills.findIndex(s => s.id === id);
-  if (index >= 0) {
-    hardSkills[index] = { id, ...req.body };
-    salvarJSON(HARD_PATH, hardSkills);
-    res.json(hardSkills[index]);
-  } else {
-    res.status(404).json({ message: "Hard skill não encontrada" });
+app.post("/api/formacoes", async (req: Request, res: Response) => {
+  const { curso, instituicao, ano } = req.body;
+  try {
+    const { lastID } = await dbRun(
+      "INSERT INTO formacoes (curso, instituicao, ano) VALUES (?, ?, ?)",
+      [curso, instituicao, ano]
+    );
+    res.json({ id: lastID, curso, instituicao, ano });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 });
 
-app.delete("/api/hardskills/:id", (req: Request, res: Response) => {
+app.put("/api/formacoes/:id", async (req: Request, res: Response) => {
   const id = parseInt(req.params.id);
-  hardSkills = hardSkills.filter(s => s.id !== id);
-  salvarJSON(HARD_PATH, hardSkills);
-  res.sendStatus(204);
-});
-
-app.get("/api/projetos", (req, res) => res.json(projetos));
-
-app.post("/api/projetos", (req, res) => {
-  const novoProjeto: Projeto = { id: projetos.length + 1, ...req.body };
-  projetos.push(novoProjeto);
-  salvarJSON(PROJETOS_PATH, projetos);
-  res.json(novoProjeto);
-});
-
-app.put("/api/projetos/:id", (req, res) => {
-  const id = parseInt(req.params.id);
-  const index = projetos.findIndex(p => p.id === id);
-  if (index >= 0) {
-    projetos[index] = { id, ...req.body };
-    salvarJSON(PROJETOS_PATH, projetos);
-    res.json(projetos[index]);
-  } else {
-    res.status(404).json({ message: "Projeto não encontrado" });
+  const { curso, instituicao, ano } = req.body;
+  try {
+    const { changes } = await dbRun(
+      "UPDATE formacoes SET curso = ?, instituicao = ?, ano = ? WHERE id = ?",
+      [curso, instituicao, ano, id]
+    );
+    if (changes === 0)
+      return res.status(404).json({ message: "Formação não encontrada" });
+    res.json({ id, curso, instituicao, ano });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 });
 
-app.delete("/api/projetos/:id", (req, res) => {
+app.delete("/api/formacoes/:id", async (req: Request, res: Response) => {
   const id = parseInt(req.params.id);
-  projetos = projetos.filter(p => p.id !== id);
-  salvarJSON(PROJETOS_PATH, projetos);
-  res.sendStatus(204);
+  try {
+    const { changes } = await dbRun("DELETE FROM formacoes WHERE id = ?", [id]);
+    if (changes === 0)
+      return res.status(404).json({ message: "Formação não encontrada" });
+    res.sendStatus(204);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
+app.get("/api/softskills", async (req: Request, res: Response) => {
+  try {
+    const rows = await dbAll<SoftSkill>("SELECT * FROM soft_skills");
+    res.json(rows);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-app.post("/api/contato", (req, res) => {
+app.post("/api/softskills", async (req: Request, res: Response) => {
+  const { habilidade } = req.body;
+  try {
+    const { lastID } = await dbRun(
+      "INSERT INTO soft_skills (habilidade) VALUES (?)",
+      [habilidade]
+    );
+    res.json({ id: lastID, habilidade });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/api/softskills/:id", async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id);
+  const { habilidade } = req.body;
+  try {
+    const { changes } = await dbRun(
+      "UPDATE soft_skills SET habilidade = ? WHERE id = ?",
+      [habilidade, id]
+    );
+    if (changes === 0)
+      return res.status(404).json({ message: "Soft skill não encontrada" });
+    res.json({ id, habilidade });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete("/api/softskills/:id", async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id);
+  try {
+    const { changes } = await dbRun("DELETE FROM soft_skills WHERE id = ?", [
+      id,
+    ]);
+    if (changes === 0)
+      return res.status(404).json({ message: "Soft skill não encontrada" });
+    res.sendStatus(204);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/hardskills", async (req: Request, res: Response) => {
+  try {
+    const rows = await dbAll<HardSkill>("SELECT * FROM hard_skills");
+    res.json(rows);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/hardskills", async (req: Request, res: Response) => {
+  const { nomeHabilidade, habilidade } = req.body;
+  try {
+    const { lastID } = await dbRun(
+      "INSERT INTO hard_skills (nomeHabilidade, habilidade) VALUES (?, ?)",
+      [nomeHabilidade, habilidade]
+    );
+    res.json({ id: lastID, nomeHabilidade, habilidade });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/api/hardskills/:id", async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id);
+  const { nomeHabilidade, habilidade } = req.body;
+  try {
+    const { changes } = await dbRun(
+      "UPDATE hard_skills SET nomeHabilidade = ?, habilidade = ? WHERE id = ?",
+      [nomeHabilidade, habilidade, id]
+    );
+    if (changes === 0)
+      return res.status(404).json({ message: "Hard skill não encontrada" });
+    res.json({ id, nomeHabilidade, habilidade });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete("/api/hardskills/:id", async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id);
+  try {
+    const { changes } = await dbRun("DELETE FROM hard_skills WHERE id = ?", [
+      id,
+    ]);
+    if (changes === 0)
+      return res.status(404).json({ message: "Hard skill não encontrada" });
+    res.sendStatus(204);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/projetos", async (req: Request, res: Response) => {
+  try {
+    const rows = await dbAll<Projeto>("SELECT * FROM projetos");
+    res.json(rows);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/projetos", async (req: Request, res: Response) => {
+  const { titulo, descricao, tecnologias } = req.body;
+  try {
+    const { lastID } = await dbRun(
+      "INSERT INTO projetos (titulo, descricao, tecnologias) VALUES (?, ?, ?)",
+      [titulo, descricao, tecnologias]
+    );
+    res.json({ id: lastID, titulo, descricao, tecnologias });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/api/projetos/:id", async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id);
+  const { titulo, descricao, tecnologias } = req.body;
+  try {
+    const { changes } = await dbRun(
+      "UPDATE projetos SET titulo = ?, descricao = ?, tecnologias = ? WHERE id = ?",
+      [titulo, descricao, tecnologias, id]
+    );
+    if (changes === 0)
+      return res.status(404).json({ message: "Projeto não encontrado" });
+    res.json({ id, titulo, descricao, tecnologias });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete("/api/projetos/:id", async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id);
+  try {
+    const { changes } = await dbRun("DELETE FROM projetos WHERE id = ?", [id]);
+    if (changes === 0)
+      return res.status(404).json({ message: "Projeto não encontrado" });
+    res.sendStatus(204);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/contato", async (req: Request, res: Response) => {
   const { email, github, linkedin } = req.body;
-  if (email) contato.email = email;
-  if (github) contato.github = github;
-  if (linkedin) contato.linkedin = linkedin;
-  salvarJSON(CONTATO_PATH, contato);
-  res.json(contato);
+  try {
+    await dbRun("DELETE FROM contato");
+    const { lastID } = await dbRun(
+      "INSERT INTO contato (email, github, linkedin) VALUES (?, ?, ?)",
+      [email, github, linkedin]
+    );
+    res.json({ id: lastID, email, github, linkedin });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-app.put("/api/contato", (req, res) => {
+app.put("/api/contato", async (req: Request, res: Response) => {
   const { email, github, linkedin } = req.body;
-  if (email) contato.email = email;
-  if (github) contato.github = github;
-  if (linkedin) contato.linkedin = linkedin;
-  salvarJSON(CONTATO_PATH, contato);
-  res.json(contato);
+  try {
+    const { changes } = await dbRun(
+      "UPDATE contato SET email = ?, github = ?, linkedin = ? WHERE id = (SELECT id FROM contato LIMIT 1)",
+      [email, github, linkedin]
+    );
+    res.json({ changes, email, github, linkedin });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-app.delete("/api/contato", (req, res) => {
-  contato = { email: "", github: "", linkedin: "" };
-  salvarJSON(CONTATO_PATH, contato);
-  res.json({ message: "Contato deletado com sucesso", contato });
+app.delete("/api/contato", async (req: Request, res: Response) => {
+  try {
+    await dbRun("DELETE FROM contato");
+    res.json({ message: "Contato deletado com sucesso" });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-const PORT = 3000; app.listen(PORT, () => 
-{ console.log(`Servidor rodando em: http://localhost:${PORT}`); });
+const PORT = 3000;
+app.listen(PORT, () => {
+  console.log(`Servidor rodando em: http://localhost:${PORT}`);
+});
